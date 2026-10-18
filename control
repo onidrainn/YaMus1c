@@ -1,0 +1,8 @@
+Package: com.ra1nndev.yamus1c
+Name: YaMus1c
+Version: 1.2.0
+Architecture: iphoneos-arm
+Description: Yandex Music client for iOS 6 by ra1nndev
+Maintainer: ra1ndev
+Author: ra1nndev
+Section: Multimedia
