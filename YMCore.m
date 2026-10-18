@@ -5,7 +5,7 @@ NSString * const YMDownloadsUpdatedNotification = @"YMDownloadsUpdatedNotificati
 NSString * const YMLikesUpdatedNotification = @"YMLikesUpdatedNotification";
 
 // Адрес вашего Mac с запущенным main.py
-static NSString * const kDefaultProxyBaseURL = @"http://64.188.126.165:6500";
+static NSString * const kDefaultProxyBaseURL = @"http://<YOUR_SERVER_IP>";
 
 @implementation YMTrack
 
