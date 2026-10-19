@@ -1,34 +1,87 @@
 # main.py
 import os
+import json
 from flask import Flask, request, jsonify, Response
 import requests
 from yandex_music import Client
 
 app = Flask(__name__)
 
+YANDEX_CLIENT_ID = "23cabbbdc6cd418abb4b39c32c41195d"
+YANDEX_CLIENT_SECRET = "53bc75238f0c4d08a118e51fe9203300"
+
+AUTH_CACHE_FILE = "auth_state.json"
 _clients = {}
 
-def read_local_token() -> str:
-    for path in ("session.txt", os.path.join("Resources", "session.txt")):
-        if os.path.exists(path):
-            with open(path, "r", encoding="utf-8") as f:
-                t = "".join(f.read().split())
-                if t:
-                    return t
+
+def save_auth_state(token: str, account_name: str = ""):
+    try:
+        with open(AUTH_CACHE_FILE, "w", encoding="utf-8") as f:
+            json.dump({"token": token, "account_name": account_name}, f, ensure_ascii=False)
+    except Exception:
+        pass
+
+
+def load_cached_token() -> str:
+    if os.path.exists(AUTH_CACHE_FILE):
+        try:
+            with open(AUTH_CACHE_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                return data.get("token", "").strip()
+        except Exception:
+            pass
     return ""
+
 
 def get_token() -> str:
     token = request.headers.get("X-Ya-Token", "").strip()
     if not token:
         token = request.args.get("token", "").strip()
     if not token:
-        token = read_local_token()
+        token = load_cached_token()
     return token
+
 
 def get_client(token: str) -> Client:
     if token not in _clients:
         _clients[token] = Client(token).init()
     return _clients[token]
+
+
+def fetch_account_name(token: str) -> str:
+    # 1. Пробуем получить имя из Yandex Passport API
+    try:
+        r = requests.get(
+            "https://login.yandex.ru/info?format=json",
+            headers={"Authorization": f"OAuth {token}"},
+            timeout=10,
+        )
+        if r.status_code == 200:
+            info = r.json()
+            name = (
+                info.get("display_name")
+                or info.get("real_name")
+                or info.get("login")
+                or info.get("default_email")
+            )
+            if name:
+                return str(name)
+    except Exception:
+        pass
+
+    # 2. Фолбэк через клиент Яндекс Музыки
+    try:
+        client = get_client(token)
+        if client.me and client.me.account:
+            acc = client.me.account
+            name = acc.display_name or acc.full_name or acc.login or str(acc.uid or "")
+            if name:
+                return str(name)
+    except Exception:
+        pass
+
+    return "Пользователь Яндекса"
+
 
 def resolve_direct_mp3_url(track_id: str, client: Client) -> str:
     infos = client.tracks_download_info(track_id, get_direct_links=True)
@@ -37,6 +90,7 @@ def resolve_direct_mp3_url(track_id: str, client: Client) -> str:
     mp3_infos = [i for i in infos if i.codec == "mp3"] or infos
     best = sorted(mp3_infos, key=lambda x: x.bitrate_in_kbps or 0, reverse=True)[0]
     return best.direct_link or best.get_direct_link()
+
 
 def format_track(track, host_url: str, token: str) -> dict:
     track_id = str(track.id)
@@ -52,7 +106,6 @@ def format_track(track, host_url: str, token: str) -> dict:
         clean_uri = cover_uri.replace("%%", "200x200")
         cover_url = f"{host_url.rstrip('/')}/cover?uri={clean_uri}"
 
-    # Ссылка ведет на эндпоинт генерации свежего потока на лету
     stream_url = f"{host_url.rstrip('/')}/get-stream/{track_id}.mp3"
 
     return {
@@ -65,17 +118,76 @@ def format_track(track, host_url: str, token: str) -> dict:
         "stream_url": stream_url,
     }
 
-@app.route("/", methods=["GET"])
-def index():
-    token = get_token()
-    if not token:
-        return jsonify({"status": "running", "token_loaded": False}), 200
+
+@app.route("/auth/device/start", methods=["POST", "GET"])
+def auth_device_start():
     try:
-        client = get_client(token)
-        uid = client.me.account.uid if client.me and client.me.account else None
-        return jsonify({"status": "running", "token_loaded": True, "uid": uid}), 200
+        r = requests.post(
+            "https://oauth.yandex.ru/device/code",
+            data={"client_id": YANDEX_CLIENT_ID},
+            timeout=15,
+        )
+        r.raise_for_status()
+        data = r.json()
+        return jsonify({
+            "device_code": data.get("device_code", ""),
+            "user_code": data.get("user_code", ""),
+            "verification_url": data.get("verification_url", "https://ya.ru/device"),
+            "interval": data.get("interval", 5),
+            "expires_in": data.get("expires_in", 300),
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/auth/device/poll", methods=["POST"])
+def auth_device_poll():
+    body = request.get_json(silent=True) or {}
+    device_code = body.get("device_code", "").strip()
+    if not device_code:
+        return jsonify({"error": "Missing device_code"}), 400
+
+    try:
+        r = requests.post(
+            "https://oauth.yandex.ru/token",
+            data={
+                "grant_type": "device_code",
+                "code": device_code,
+                "client_id": YANDEX_CLIENT_ID,
+                "client_secret": YANDEX_CLIENT_SECRET,
+            },
+            timeout=15,
+        )
+        data = r.json()
+
+        if "access_token" in data:
+            token = data["access_token"]
+            account_name = fetch_account_name(token)
+            save_auth_state(token, account_name)
+            return jsonify({
+                "status": "ok",
+                "access_token": token,
+                "account_name": account_name,
+            })
+
+        err_code = data.get("error", "authorization_pending")
+        if err_code in ("authorization_pending", "slow_down"):
+            return jsonify({"status": "pending", "error": err_code}), 200
+
+        return jsonify({"status": "error", "error": data.get("error_description") or err_code}), 400
     except Exception as e:
         return jsonify({"status": "error", "error": str(e)}), 500
+
+
+@app.route("/account", methods=["GET"])
+def get_account():
+    token = get_token()
+    if not token:
+        return jsonify({"error": "Unauthorized"}), 401
+    account_name = fetch_account_name(token)
+    save_auth_state(token, account_name)
+    return jsonify({"account_name": account_name})
+
 
 @app.route("/likes", methods=["GET"])
 def get_likes():
@@ -83,6 +195,7 @@ def get_likes():
     if not token:
         return jsonify({"error": "Missing token"}), 401
     try:
+        save_auth_state(token)
         client = get_client(token)
         likes_list = client.users_likes_tracks()
         if not likes_list or not likes_list.tracks:
@@ -100,6 +213,7 @@ def get_likes():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+
 @app.route("/likes/add", methods=["POST"])
 def add_like():
     token = get_token()
@@ -114,6 +228,7 @@ def add_like():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+
 @app.route("/likes/remove", methods=["POST"])
 def remove_likes():
     token = get_token()
@@ -127,6 +242,7 @@ def remove_likes():
         return jsonify({"status": "ok"})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
 
 @app.route("/search", methods=["GET"])
 def search():
@@ -152,9 +268,9 @@ def search():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+
 @app.route("/get-stream/<path:filename>", methods=["GET", "HEAD"])
 def get_stream(filename):
-    # Извлекаем ID трека из строки вида "118642431.mp3" или просто "118642431"
     track_id = filename.split(".")[0]
     token = get_token()
     if not token:
@@ -197,6 +313,7 @@ def get_stream(filename):
     except Exception as e:
         return str(e), 500
 
+
 @app.route("/cover", methods=["GET"])
 def proxy_cover():
     uri = request.args.get("uri", "").strip()
@@ -209,6 +326,7 @@ def proxy_cover():
         return Response(r.content, content_type=r.headers.get("Content-Type", "image/jpeg"))
     except Exception as e:
         return str(e), 404
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=6500, threaded=True)

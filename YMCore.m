@@ -3,9 +3,11 @@
 NSString * const YMPlayerStateChangedNotification = @"YMPlayerStateChangedNotification";
 NSString * const YMDownloadsUpdatedNotification = @"YMDownloadsUpdatedNotification";
 NSString * const YMLikesUpdatedNotification = @"YMLikesUpdatedNotification";
+NSString * const YMAuthStateChangedNotification = @"YMAuthStateChangedNotification";
 
-// Адрес вашего Mac с запущенным main.py
-static NSString * const kDefaultProxyBaseURL = @"http://<YOUR_SERVER_IP>";
+static NSString * const kDefaultProxyBaseURL = @"http://<YOUR_SERVER_IP_AND_PORT>";
+static NSString * const kYMStoredTokenKey = @"YMOAuthStoredToken";
+static NSString * const kYMStoredAccountNameKey = @"YMOAuthStoredAccountName";
 
 @implementation YMTrack
 
@@ -14,7 +16,6 @@ static NSString * const kDefaultProxyBaseURL = @"http://<YOUR_SERVER_IP>";
     if ([urlStr hasPrefix:@"/"]) {
         return [NSString stringWithFormat:@"%@%@", baseURL, urlStr];
     }
-    // Если сервер вернул 127.0.0.1 или localhost, заменяем на реальный IP прокси
     NSURL *parsed = [NSURL URLWithString:urlStr];
     if (parsed && ([parsed.host isEqualToString:@"127.0.0.1"] || [parsed.host isEqualToString:@"localhost"])) {
         NSRange pathRange = [urlStr rangeOfString:parsed.path];
@@ -37,7 +38,6 @@ static NSString * const kDefaultProxyBaseURL = @"http://<YOUR_SERVER_IP>";
     NSString *rawCover = [dict[@"cover_url"] isKindOfClass:[NSString class]] ? dict[@"cover_url"] : @"";
     t.coverURL = [self normalizeURL:rawCover baseURL:baseURL];
 
-    // Формируем чистый эндпоинт потока
     NSString *rawStream = [NSString stringWithFormat:@"%@/get-stream/%@.mp3", baseURL, t.trackId];
     t.streamURL = rawStream;
 
@@ -72,6 +72,7 @@ static NSString * const kDefaultProxyBaseURL = @"http://<YOUR_SERVER_IP>";
 
 @interface YMApiClient ()
 @property (nonatomic, copy, readwrite) NSString *token;
+@property (nonatomic, copy, readwrite) NSString *accountName;
 @property (nonatomic, strong) NSOperationQueue *netQueue;
 @property (nonatomic, strong) NSCache *imageCache;
 @end
@@ -93,6 +94,11 @@ static NSString * const kDefaultProxyBaseURL = @"http://<YOUR_SERVER_IP>";
         _netQueue = [[NSOperationQueue alloc] init];
         _netQueue.maxConcurrentOperationCount = 4;
         _imageCache = [[NSCache alloc] init];
+
+        NSUserDefaults *defs = [NSUserDefaults standardUserDefaults];
+        _token = [defs stringForKey:kYMStoredTokenKey] ?: @"";
+        _accountName = [defs stringForKey:kYMStoredAccountNameKey] ?: @"";
+
         [self reloadConfig];
     }
     return self;
@@ -116,7 +122,6 @@ static NSString * const kDefaultProxyBaseURL = @"http://<YOUR_SERVER_IP>";
 }
 
 - (void)reloadConfig {
-    self.token = [self cleanTextFromFile:@"session.txt"];
     NSString *customProxy = [self cleanTextFromFile:@"proxy.txt"];
     if (customProxy.length > 0 && [customProxy hasPrefix:@"http"]) {
         if ([customProxy hasSuffix:@"/"]) {
@@ -128,6 +133,34 @@ static NSString * const kDefaultProxyBaseURL = @"http://<YOUR_SERVER_IP>";
     }
 }
 
+- (BOOL)isAuthorized {
+    return (self.token && self.token.length > 0);
+}
+
+- (void)saveToken:(NSString *)token accountName:(NSString *)accountName {
+    self.token = token ?: @"";
+    if (accountName && accountName.length > 0) {
+        self.accountName = accountName;
+    }
+    NSUserDefaults *defs = [NSUserDefaults standardUserDefaults];
+    [defs setObject:self.token forKey:kYMStoredTokenKey];
+    if (self.accountName.length > 0) {
+        [defs setObject:self.accountName forKey:kYMStoredAccountNameKey];
+    }
+    [defs synchronize];
+    [[NSNotificationCenter defaultCenter] postNotificationName:YMAuthStateChangedNotification object:nil];
+}
+
+- (void)logout {
+    self.token = @"";
+    self.accountName = @"";
+    NSUserDefaults *defs = [NSUserDefaults standardUserDefaults];
+    [defs removeObjectForKey:kYMStoredTokenKey];
+    [defs removeObjectForKey:kYMStoredAccountNameKey];
+    [defs synchronize];
+    [[NSNotificationCenter defaultCenter] postNotificationName:YMAuthStateChangedNotification object:nil];
+}
+
 - (NSMutableURLRequest *)requestWithPath:(NSString *)path method:(NSString *)method body:(NSDictionary *)body {
     [self reloadConfig];
     NSString *urlStr = [NSString stringWithFormat:@"%@%@", self.baseURL, path];
@@ -136,7 +169,6 @@ static NSString * const kDefaultProxyBaseURL = @"http://<YOUR_SERVER_IP>";
                                                    timeoutInterval:25.0];
     req.HTTPMethod = method;
     req.HTTPShouldUsePipelining = NO;
-    // Важно для связки iOS 6 CFNetwork + Python Flask (Werkzeug)
     [req setValue:@"close" forHTTPHeaderField:@"Connection"];
     [req setValue:@"application/json" forHTTPHeaderField:@"Accept"];
 
@@ -169,7 +201,91 @@ static NSString * const kDefaultProxyBaseURL = @"http://<YOUR_SERVER_IP>";
     return nil;
 }
 
+- (void)startDeviceAuthWithCompletion:(void (^)(NSString *deviceCode, NSString *userCode, NSString *verificationURL, NSInteger interval, NSError *error))completion {
+    NSURLRequest *req = [self requestWithPath:@"/auth/device/start" method:@"POST" body:@{}];
+    [NSURLConnection sendAsynchronousRequest:req queue:self.netQueue completionHandler:^(NSURLResponse *resp, NSData *data, NSError *err) {
+        NSError *apiErr = [self errorFromResponse:resp data:data networkError:err];
+        if (apiErr || !data) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (completion) completion(nil, nil, nil, 5, apiErr);
+            });
+            return;
+        }
+        NSDictionary *json = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+        NSString *devCode = [json isKindOfClass:[NSDictionary class]] ? (json[@"device_code"] ?: @"") : @"";
+        NSString *usrCode = [json isKindOfClass:[NSDictionary class]] ? (json[@"user_code"] ?: @"") : @"";
+        NSString *verURL = [json isKindOfClass:[NSDictionary class]] ? (json[@"verification_url"] ?: @"ya.ru/device") : @"ya.ru/device";
+        NSInteger interval = ([json isKindOfClass:[NSDictionary class]] && [json[@"interval"] respondsToSelector:@selector(integerValue)]) ? [json[@"interval"] integerValue] : 5;
+
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (completion) completion(devCode, usrCode, verURL, MAX(3, interval), nil);
+        });
+    }];
+}
+
+- (void)pollDeviceAuthWithCode:(NSString *)deviceCode completion:(void (^)(BOOL authorized, NSString *token, NSString *accountName, NSError *error))completion {
+    if (!deviceCode || deviceCode.length == 0) return;
+    NSURLRequest *req = [self requestWithPath:@"/auth/device/poll" method:@"POST" body:@{@"device_code": deviceCode}];
+    [NSURLConnection sendAsynchronousRequest:req queue:self.netQueue completionHandler:^(NSURLResponse *resp, NSData *data, NSError *err) {
+        if (err || !data) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (completion) completion(NO, nil, nil, err);
+            });
+            return;
+        }
+        NSDictionary *json = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+        if (![json isKindOfClass:[NSDictionary class]]) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (completion) completion(NO, nil, nil, nil);
+            });
+            return;
+        }
+        NSString *status = json[@"status"] ?: @"";
+        if ([status isEqualToString:@"ok"] && [json[@"access_token"] isKindOfClass:[NSString class]]) {
+            NSString *tok = json[@"access_token"];
+            NSString *accName = [json[@"account_name"] isKindOfClass:[NSString class]] ? json[@"account_name"] : @"Пользователь Яндекса";
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [self saveToken:tok accountName:accName];
+                if (completion) completion(YES, tok, accName, nil);
+            });
+        } else {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (completion) completion(NO, nil, nil, nil);
+            });
+        }
+    }];
+}
+
+- (void)fetchAccountInfoWithCompletion:(void (^)(NSString *accountName, NSError *error))completion {
+    if (![self isAuthorized]) {
+        if (completion) completion(nil, nil);
+        return;
+    }
+    NSURLRequest *req = [self requestWithPath:@"/account" method:@"GET" body:nil];
+    [NSURLConnection sendAsynchronousRequest:req queue:self.netQueue completionHandler:^(NSURLResponse *resp, NSData *data, NSError *err) {
+        NSError *apiErr = [self errorFromResponse:resp data:data networkError:err];
+        if (apiErr || !data) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (completion) completion(self.accountName, apiErr);
+            });
+            return;
+        }
+        NSDictionary *json = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+        NSString *accName = ([json isKindOfClass:[NSDictionary class]] && [json[@"account_name"] isKindOfClass:[NSString class]]) ? json[@"account_name"] : @"";
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (accName.length > 0) {
+                [self saveToken:self.token accountName:accName];
+            }
+            if (completion) completion(self.accountName, nil);
+        });
+    }];
+}
+
 - (void)fetchLikesWithCompletion:(void (^)(NSArray *tracks, NSError *error))completion {
+    if (![self isAuthorized]) {
+        if (completion) completion(@[], nil);
+        return;
+    }
     NSURLRequest *req = [self requestWithPath:@"/likes" method:@"GET" body:nil];
     [NSURLConnection sendAsynchronousRequest:req queue:self.netQueue completionHandler:^(NSURLResponse *resp, NSData *data, NSError *err) {
         NSError *apiErr = [self errorFromResponse:resp data:data networkError:err];

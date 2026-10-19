@@ -4,7 +4,8 @@
 typedef NS_ENUM(NSInteger, YMAppTheme) {
     YMAppThemeDarkYellow = 0,
     YMAppThemeClassicIOS6 = 1,
-    YMAppThemeLightYellow = 2
+    YMAppThemeLightYellow = 2,
+    YMAppThemeMaterialYou = 3
 };
 
 extern NSString *const YMThemeDidChangeNotification;
@@ -19,17 +20,23 @@ extern NSString *const YMThemeDidChangeNotification;
 + (instancetype)shared;
 - (BOOL)isDarkTheme;
 - (BOOL)isFlatTheme;
+- (BOOL)isMaterialYouTheme;
 - (UIColor *)accentColor;
 - (UIColor *)backgroundColor;
 - (UIColor *)cellBackgroundColor;
 - (UIColor *)primaryTextColor;
 - (UIColor *)secondaryTextColor;
 - (UIColor *)separatorColor;
+- (NSString *)currentThemeDisplayName;
 
 - (void)applyThemeToNavigationController:(UINavigationController *)nav;
 - (void)applyThemeToSearchBar:(UISearchBar *)searchBar;
 - (void)applyThemeToTabBarController:(UITabBarController *)tabBarController;
 - (UIImage *)glossyBarBackgroundWithHeight:(CGFloat)height;
+@end
+
+@interface YMAuthViewController : UIViewController
+@property (nonatomic, copy) void (^onAuthSuccess)(void);
 @end
 
 @class YMSwipeTrackCell;
@@ -66,5 +73,8 @@ extern NSString *const YMThemeDidChangeNotification;
 @interface YMDownloadsViewController : UIViewController <UITableViewDataSource, UITableViewDelegate, YMSwipeTrackCellDelegate>
 @end
 
-@interface YMSettingsViewController : UIViewController <UITableViewDataSource, UITableViewDelegate>
+@interface YMThemeSettingsViewController : UIViewController
+@end
+
+@interface YMSettingsViewController : UIViewController
 @end

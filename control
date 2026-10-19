@@ -1,6 +1,6 @@
 Package: com.yourcompany.yourproject
 Name: yourproject
-Version: 1.2.0
+Version: 1.3.0
 Architecture: iphoneos-arm
 Description: Yandex Music client for iOS 6 by yourcompany
 Maintainer: yourcompany

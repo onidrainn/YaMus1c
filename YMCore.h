@@ -6,6 +6,7 @@
 extern NSString * const YMPlayerStateChangedNotification;
 extern NSString * const YMDownloadsUpdatedNotification;
 extern NSString * const YMLikesUpdatedNotification;
+extern NSString * const YMAuthStateChangedNotification;
 
 @interface YMTrack : NSObject
 @property (nonatomic, copy) NSString *trackId;
@@ -26,9 +27,18 @@ extern NSString * const YMLikesUpdatedNotification;
 @interface YMApiClient : NSObject
 @property (nonatomic, copy) NSString *baseURL;
 @property (nonatomic, copy, readonly) NSString *token;
+@property (nonatomic, copy, readonly) NSString *accountName;
 
 + (instancetype)shared;
+- (void)logout;
 - (void)reloadConfig;
+- (BOOL)isAuthorized;
+- (void)saveToken:(NSString *)token accountName:(NSString *)accountName;
+
+- (void)startDeviceAuthWithCompletion:(void (^)(NSString *deviceCode, NSString *userCode, NSString *verificationURL, NSInteger interval, NSError *error))completion;
+- (void)pollDeviceAuthWithCode:(NSString *)deviceCode completion:(void (^)(BOOL authorized, NSString *token, NSString *accountName, NSError *error))completion;
+- (void)fetchAccountInfoWithCompletion:(void (^)(NSString *accountName, NSError *error))completion;
+
 - (void)fetchLikesWithCompletion:(void (^)(NSArray *tracks, NSError *error))completion;
 - (void)addTrackToLikes:(NSString *)trackId completion:(void (^)(BOOL success, NSError *error))completion;
 - (void)removeTracksFromLikes:(NSArray *)trackIds completion:(void (^)(BOOL success, NSError *error))completion;

@@ -54,39 +54,77 @@ static NSString *const kYMThemeDefaultsKey = @"YMSelectedAppTheme";
 }
 
 - (BOOL)isDarkTheme {
-    return (self.currentTheme == YMAppThemeDarkYellow);
+    return (self.currentTheme == YMAppThemeDarkYellow || self.currentTheme == YMAppThemeMaterialYou);
+}
+
+- (BOOL)isMaterialYouTheme {
+    return (self.currentTheme == YMAppThemeMaterialYou);
 }
 
 - (BOOL)isFlatTheme {
-    return (self.currentTheme == YMAppThemeDarkYellow || self.currentTheme == YMAppThemeLightYellow);
+    return (self.currentTheme == YMAppThemeDarkYellow ||
+            self.currentTheme == YMAppThemeLightYellow ||
+            self.currentTheme == YMAppThemeMaterialYou);
+}
+
+- (NSString *)currentThemeDisplayName {
+    switch (self.currentTheme) {
+        case YMAppThemeDarkYellow:
+            return @"Тёмная (Жёлтый акцент)";
+        case YMAppThemeClassicIOS6:
+            return @"Классическая iOS 6";
+        case YMAppThemeLightYellow:
+            return @"Светлая (Жёлтый акцент)";
+        case YMAppThemeMaterialYou:
+            return @"Material You";
+        default:
+            return @"Тёмная (Жёлтый акцент)";
+    }
 }
 
 - (UIColor *)accentColor {
     if (self.currentTheme == YMAppThemeDarkYellow || self.currentTheme == YMAppThemeLightYellow) {
-        return [UIColor colorWithRed:0.95 green:0.75 blue:0.10 alpha:1.0]; // Фирменный жёлтый
+        return [UIColor colorWithRed:0.95 green:0.75 blue:0.10 alpha:1.0];
+    } else if (self.currentTheme == YMAppThemeMaterialYou) {
+        return [UIColor colorWithRed:0.82 green:0.74 blue:1.00 alpha:1.0]; // Material You Primary (#D0BCFF)
     } else {
-        return [UIColor colorWithRed:0.20 green:0.45 blue:0.78 alpha:1.0]; // Классический синий iOS 6
+        return [UIColor colorWithRed:0.20 green:0.45 blue:0.78 alpha:1.0];
     }
 }
 
 - (UIColor *)backgroundColor {
-    return [self isDarkTheme] ? [UIColor blackColor] : [UIColor whiteColor];
+    if (self.currentTheme == YMAppThemeMaterialYou) {
+        return [UIColor colorWithRed:0.08 green:0.07 blue:0.10 alpha:1.0]; // Material You Surface (#141218)
+    }
+    return (self.currentTheme == YMAppThemeDarkYellow) ? [UIColor blackColor] : [UIColor whiteColor];
 }
 
 - (UIColor *)cellBackgroundColor {
-    return [self isDarkTheme] ? [UIColor blackColor] : [UIColor whiteColor];
+    if (self.currentTheme == YMAppThemeMaterialYou) {
+        return [UIColor colorWithRed:0.13 green:0.12 blue:0.16 alpha:1.0]; // Material You Surface Container (#211F26)
+    }
+    return (self.currentTheme == YMAppThemeDarkYellow) ? [UIColor blackColor] : [UIColor whiteColor];
 }
 
 - (UIColor *)primaryTextColor {
-    return [self isDarkTheme] ? [UIColor whiteColor] : [UIColor colorWithWhite:0.10 alpha:1.0];
+    if (self.currentTheme == YMAppThemeMaterialYou) {
+        return [UIColor colorWithRed:0.90 green:0.88 blue:0.92 alpha:1.0]; // Material You OnSurface (#E6E0E9)
+    }
+    return (self.currentTheme == YMAppThemeDarkYellow) ? [UIColor whiteColor] : [UIColor colorWithWhite:0.10 alpha:1.0];
 }
 
 - (UIColor *)secondaryTextColor {
-    return [self isDarkTheme] ? [UIColor colorWithWhite:0.60 alpha:1.0] : [UIColor colorWithWhite:0.45 alpha:1.0];
+    if (self.currentTheme == YMAppThemeMaterialYou) {
+        return [UIColor colorWithRed:0.76 green:0.74 blue:0.80 alpha:1.0]; // Material You OnSurfaceVariant (#CAC4D0)
+    }
+    return (self.currentTheme == YMAppThemeDarkYellow) ? [UIColor colorWithWhite:0.60 alpha:1.0] : [UIColor colorWithWhite:0.45 alpha:1.0];
 }
 
 - (UIColor *)separatorColor {
-    return [self isDarkTheme] ? [UIColor colorWithWhite:0.18 alpha:1.0] : [UIColor colorWithWhite:0.86 alpha:1.0];
+    if (self.currentTheme == YMAppThemeMaterialYou) {
+        return [UIColor colorWithRed:0.22 green:0.20 blue:0.25 alpha:1.0]; // Material You OutlineVariant
+    }
+    return (self.currentTheme == YMAppThemeDarkYellow) ? [UIColor colorWithWhite:0.18 alpha:1.0] : [UIColor colorWithWhite:0.86 alpha:1.0];
 }
 
 - (UIImage *)glossyBarBackgroundWithHeight:(CGFloat)height {
@@ -121,7 +159,25 @@ static NSString *const kYMThemeDefaultsKey = @"YMSelectedAppTheme";
     UIViewController *rootVC = nav.viewControllers.firstObject;
     BOOL isPlayerNav = [rootVC isKindOfClass:[YMPlayerViewController class]];
 
-    if (self.currentTheme == YMAppThemeDarkYellow || (self.currentTheme == YMAppThemeLightYellow && isPlayerNav)) {
+    if (self.currentTheme == YMAppThemeMaterialYou) {
+        nav.navigationBar.barStyle = UIBarStyleBlack;
+        // Скромный тональный оттенок для кнопок в NavigationBar
+        nav.navigationBar.tintColor = [UIColor colorWithRed:0.20 green:0.18 blue:0.25 alpha:1.0];
+        nav.navigationBar.titleTextAttributes = @{
+            UITextAttributeTextColor: [self primaryTextColor],
+            UITextAttributeTextShadowColor: [UIColor clearColor]
+        };
+        if ([nav.navigationBar respondsToSelector:@selector(setBackgroundImage:forBarMetrics:)]) {
+            CGSize size = CGSizeMake(320, 44);
+            UIGraphicsBeginImageContext(size);
+            CGContextRef ctx = UIGraphicsGetCurrentContext();
+            CGContextSetRGBFillColor(ctx, 0.13, 0.12, 0.16, 1.0); // Surface Container (#211F26)
+            CGContextFillRect(ctx, CGRectMake(0, 0, 320, 44));
+            UIImage *img = UIGraphicsGetImageFromCurrentImageContext();
+            UIGraphicsEndImageContext();
+            [nav.navigationBar setBackgroundImage:img forBarMetrics:UIBarMetricsDefault];
+        }
+    } else if (self.currentTheme == YMAppThemeDarkYellow || (self.currentTheme == YMAppThemeLightYellow && isPlayerNav)) {
         nav.navigationBar.barStyle = UIBarStyleBlack;
         nav.navigationBar.tintColor = [self accentColor];
         nav.navigationBar.titleTextAttributes = @{
@@ -139,7 +195,6 @@ static NSString *const kYMThemeDefaultsKey = @"YMSelectedAppTheme";
             [nav.navigationBar setBackgroundImage:img forBarMetrics:UIBarMetricsDefault];
         }
     } else if (self.currentTheme == YMAppThemeLightYellow) {
-        // Светлая тема (кроме плеера): жёлтая шапка, белые заголовки, а кнопки — цвета как в темной теме ([self accentColor])
         nav.navigationBar.barStyle = UIBarStyleDefault;
         nav.navigationBar.tintColor = [self accentColor];
         nav.navigationBar.titleTextAttributes = @{
@@ -159,11 +214,10 @@ static NSString *const kYMThemeDefaultsKey = @"YMSelectedAppTheme";
             [nav.navigationBar setBackgroundImage:img forBarMetrics:UIBarMetricsDefault];
         }
     } else {
-        // Классическая синяя тема iOS 6: базовый цвет хедера и базовый цвет кнопок (не белый)
         nav.navigationBar.barStyle = UIBarStyleDefault;
-        nav.navigationBar.tintColor = nil; // Базовый системный цвет кнопок
+        nav.navigationBar.tintColor = nil;
         nav.navigationBar.titleTextAttributes = @{
-            UITextAttributeTextColor: [UIColor colorWithRed:0.95 green:0.97 blue:1.0 alpha:1.0], // Базовый светлый оттенок текста заголовка
+            UITextAttributeTextColor: [UIColor colorWithRed:0.95 green:0.97 blue:1.0 alpha:1.0],
             UITextAttributeTextShadowColor: [UIColor colorWithWhite:0.0 alpha:0.5]
         };
         if ([nav.navigationBar respondsToSelector:@selector(setBackgroundImage:forBarMetrics:)]) {
@@ -176,7 +230,11 @@ static NSString *const kYMThemeDefaultsKey = @"YMSelectedAppTheme";
 
 - (void)applyThemeToSearchBar:(UISearchBar *)searchBar {
     if (!searchBar) return;
-    if (self.currentTheme == YMAppThemeDarkYellow) {
+    if (self.currentTheme == YMAppThemeMaterialYou) {
+        searchBar.barStyle = UIBarStyleBlack;
+        searchBar.tintColor = [UIColor colorWithRed:0.20 green:0.18 blue:0.25 alpha:1.0];
+        searchBar.backgroundColor = [UIColor colorWithRed:0.13 green:0.12 blue:0.16 alpha:1.0];
+    } else if (self.currentTheme == YMAppThemeDarkYellow) {
         searchBar.barStyle = UIBarStyleBlack;
         searchBar.tintColor = [self accentColor];
         searchBar.backgroundColor = [UIColor colorWithRed:0.08 green:0.08 blue:0.08 alpha:1.0];
@@ -205,7 +263,7 @@ static NSString *const kYMThemeDefaultsKey = @"YMSelectedAppTheme";
     if (!tabBarController) return;
     UITabBar *tabBar = tabBarController.tabBar;
 
-    UIColor *yellowColor = [self accentColor];
+    UIColor *accentCol = [self accentColor];
     UIColor *whiteColor = [UIColor whiteColor];
     UIColor *ios6BlueColor = [UIColor colorWithRed:0.25 green:0.62 blue:0.98 alpha:1.0];
     UIColor *ios6GrayColor = [UIColor colorWithWhite:0.68 alpha:1.0];
@@ -222,9 +280,21 @@ static NSString *const kYMThemeDefaultsKey = @"YMSelectedAppTheme";
             UIImage *rawImg = [UIImage imageNamed:imgNames[i]];
             UITabBarItem *item = vc.tabBarItem;
 
-            if (self.currentTheme == YMAppThemeDarkYellow || self.currentTheme == YMAppThemeLightYellow) {
+            if (self.currentTheme == YMAppThemeMaterialYou) {
+                UIColor *m3Unselected = [self secondaryTextColor];
+                UIImage *unselectedImg = [rawImg ym_tintedImageWithColor:m3Unselected];
+                UIImage *selectedImg = [rawImg ym_tintedImageWithColor:accentCol];
+                if ([item respondsToSelector:@selector(setFinishedSelectedImage:withFinishedUnselectedImage:)]) {
+                    [item setFinishedSelectedImage:selectedImg withFinishedUnselectedImage:unselectedImg];
+                } else if ([item respondsToSelector:@selector(setSelectedImage:)]) {
+                    item.image = unselectedImg;
+                    item.selectedImage = selectedImg;
+                }
+                [item setTitleTextAttributes:@{UITextAttributeTextColor: m3Unselected, UITextAttributeTextShadowColor: [UIColor clearColor]} forState:UIControlStateNormal];
+                [item setTitleTextAttributes:@{UITextAttributeTextColor: accentCol, UITextAttributeTextShadowColor: [UIColor clearColor]} forState:UIControlStateSelected];
+            } else if (self.currentTheme == YMAppThemeDarkYellow || self.currentTheme == YMAppThemeLightYellow) {
                 UIImage *unselectedImg = [rawImg ym_tintedImageWithColor:whiteColor];
-                UIImage *selectedImg = [rawImg ym_tintedImageWithColor:yellowColor];
+                UIImage *selectedImg = [rawImg ym_tintedImageWithColor:accentCol];
                 if ([item respondsToSelector:@selector(setFinishedSelectedImage:withFinishedUnselectedImage:)]) {
                     [item setFinishedSelectedImage:selectedImg withFinishedUnselectedImage:unselectedImg];
                 } else if ([item respondsToSelector:@selector(setSelectedImage:)]) {
@@ -248,7 +318,31 @@ static NSString *const kYMThemeDefaultsKey = @"YMSelectedAppTheme";
         }
     }
 
-    if (self.currentTheme == YMAppThemeDarkYellow || self.currentTheme == YMAppThemeLightYellow) {
+    if (self.currentTheme == YMAppThemeMaterialYou) {
+        CGSize size = CGSizeMake(320, 49);
+        UIGraphicsBeginImageContextWithOptions(size, YES, 0.0);
+        CGContextRef ctx = UIGraphicsGetCurrentContext();
+        CGContextSetRGBFillColor(ctx, 0.13, 0.12, 0.16, 1.0); // Surface Container (#211F26)
+        CGContextFillRect(ctx, CGRectMake(0, 0, 320, 49));
+        UIImage *m3BgImg = UIGraphicsGetImageFromCurrentImageContext();
+        UIGraphicsEndImageContext();
+
+        // Скромная минималистичная капсула для активной вкладки
+        CGSize pillSize = CGSizeMake(60, 49);
+        UIGraphicsBeginImageContextWithOptions(pillSize, NO, 0.0);
+        UIBezierPath *pillPath = [UIBezierPath bezierPathWithRoundedRect:CGRectMake(8, 6, 44, 24) cornerRadius:12.0];
+        [[UIColor colorWithRed:0.24 green:0.20 blue:0.32 alpha:0.55] setFill];
+        [pillPath fill];
+        UIImage *pillImg = UIGraphicsGetImageFromCurrentImageContext();
+        UIGraphicsEndImageContext();
+
+        if ([tabBar respondsToSelector:@selector(setBackgroundImage:)]) {
+            tabBar.backgroundImage = m3BgImg;
+        }
+        if ([tabBar respondsToSelector:@selector(setSelectionIndicatorImage:)]) {
+            tabBar.selectionIndicatorImage = pillImg;
+        }
+    } else if (self.currentTheme == YMAppThemeDarkYellow || self.currentTheme == YMAppThemeLightYellow) {
         CGSize size = CGSizeMake(320, 49);
         UIGraphicsBeginImageContext(size);
         CGContextRef ctx = UIGraphicsGetCurrentContext();
@@ -273,6 +367,168 @@ static NSString *const kYMThemeDefaultsKey = @"YMSelectedAppTheme";
     }
     [tabBar setNeedsLayout];
     [tabBar setNeedsDisplay];
+}
+
+@end
+
+#pragma mark - 0. YMAuthViewController (Незакрываемое окно входа по коду ya.ru/device)
+
+@interface YMAuthViewController ()
+@property (nonatomic, strong) UIView *cardView;
+@property (nonatomic, strong) UILabel *titleLabel;
+@property (nonatomic, strong) UILabel *instructionLabel;
+@property (nonatomic, strong) UIView *codeBox;
+@property (nonatomic, strong) UILabel *codeLabel;
+@property (nonatomic, strong) UILabel *statusLabel;
+@property (nonatomic, strong) UIButton *refreshButton;
+@property (nonatomic, strong) NSTimer *pollTimer;
+@property (nonatomic, copy) NSString *deviceCode;
+@property (nonatomic, assign) NSInteger pollInterval;
+@property (nonatomic, assign) BOOL isPollingRequestInFlight;
+@end
+
+@implementation YMAuthViewController
+
+- (void)dealloc {
+    [_pollTimer invalidate];
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
+}
+
+- (void)viewDidLoad {
+    [super viewDidLoad];
+
+    CGFloat w = self.view.bounds.size.width;
+    CGFloat h = self.view.bounds.size.height;
+
+    CGFloat cardW = w - 40.0;
+    CGFloat cardH = 260.0;
+    _cardView = [[UIView alloc] initWithFrame:CGRectMake(20.0, (h - cardH) / 2.0, cardW, cardH)];
+    _cardView.autoresizingMask = UIViewAutoresizingFlexibleTopMargin | UIViewAutoresizingFlexibleBottomMargin | UIViewAutoresizingFlexibleWidth;
+    _cardView.layer.cornerRadius = 16.0;
+    [self.view addSubview:_cardView];
+
+    _titleLabel = [[UILabel alloc] initWithFrame:CGRectMake(16.0, 20.0, cardW - 32.0, 24.0)];
+    _titleLabel.font = [UIFont boldSystemFontOfSize:18.0];
+    _titleLabel.textAlignment = NSTextAlignmentCenter;
+    _titleLabel.backgroundColor = [UIColor clearColor];
+    _titleLabel.text = @"Вход в Яндекс Музыку";
+    [_cardView addSubview:_titleLabel];
+
+    _instructionLabel = [[UILabel alloc] initWithFrame:CGRectMake(16.0, 50.0, cardW - 32.0, 42.0)];
+    _instructionLabel.font = [UIFont systemFontOfSize:13.0];
+    _instructionLabel.textAlignment = NSTextAlignmentCenter;
+    _instructionLabel.numberOfLines = 2;
+    _instructionLabel.backgroundColor = [UIColor clearColor];
+    _instructionLabel.text = @"Откройте на другом устройстве\nya.ru/device и введите код:";
+    [_cardView addSubview:_instructionLabel];
+
+    _codeBox = [[UIView alloc] initWithFrame:CGRectMake(24.0, 102.0, cardW - 48.0, 58.0)];
+    _codeBox.layer.cornerRadius = 12.0;
+    [_cardView addSubview:_codeBox];
+
+    _codeLabel = [[UILabel alloc] initWithFrame:_codeBox.bounds];
+    _codeLabel.font = [UIFont boldSystemFontOfSize:26.0];
+    _codeLabel.textAlignment = NSTextAlignmentCenter;
+    _codeLabel.backgroundColor = [UIColor clearColor];
+    _codeLabel.text = @"• • • •";
+    [_codeBox addSubview:_codeLabel];
+
+    _statusLabel = [[UILabel alloc] initWithFrame:CGRectMake(16.0, 170.0, cardW - 32.0, 20.0)];
+    _statusLabel.font = [UIFont systemFontOfSize:12.0];
+    _statusLabel.textAlignment = NSTextAlignmentCenter;
+    _statusLabel.backgroundColor = [UIColor clearColor];
+    _statusLabel.text = @"Получение кода...";
+    [_cardView addSubview:_statusLabel];
+
+    _refreshButton = [UIButton buttonWithType:UIButtonTypeCustom];
+    _refreshButton.frame = CGRectMake((cardW - 160.0) / 2.0, 204.0, 160.0, 34.0);
+    _refreshButton.layer.cornerRadius = 17.0;
+    _refreshButton.titleLabel.font = [UIFont systemFontOfSize:13.0];
+    [_refreshButton setTitle:@"Обновить код" forState:UIControlStateNormal];
+    [_refreshButton addTarget:self action:@selector(requestNewDeviceCode) forControlEvents:UIControlEventTouchUpInside];
+    [_cardView addSubview:_refreshButton];
+
+    [self applyTheme];
+    [self requestNewDeviceCode];
+}
+
+- (void)applyTheme {
+    YMThemeManager *tm = [YMThemeManager shared];
+    self.view.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.78];
+
+    if ([tm isMaterialYouTheme]) {
+        self.cardView.backgroundColor = [tm cellBackgroundColor];
+        self.titleLabel.textColor = [tm primaryTextColor];
+        self.instructionLabel.textColor = [tm secondaryTextColor];
+        self.codeBox.backgroundColor = [tm backgroundColor];
+        self.codeLabel.textColor = [tm accentColor];
+        self.statusLabel.textColor = [tm secondaryTextColor];
+        self.refreshButton.backgroundColor = [UIColor colorWithRed:0.20 green:0.18 blue:0.25 alpha:1.0];
+        [self.refreshButton setTitleColor:[tm primaryTextColor] forState:UIControlStateNormal];
+    } else if ([tm isDarkTheme]) {
+        self.cardView.backgroundColor = [UIColor colorWithWhite:0.12 alpha:1.0];
+        self.titleLabel.textColor = [UIColor whiteColor];
+        self.instructionLabel.textColor = [UIColor colorWithWhite:0.70 alpha:1.0];
+        self.codeBox.backgroundColor = [UIColor blackColor];
+        self.codeLabel.textColor = [tm accentColor];
+        self.statusLabel.textColor = [UIColor colorWithWhite:0.60 alpha:1.0];
+        self.refreshButton.backgroundColor = [UIColor colorWithWhite:0.20 alpha:1.0];
+        [self.refreshButton setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
+    } else {
+        self.cardView.backgroundColor = [UIColor whiteColor];
+        self.titleLabel.textColor = [UIColor blackColor];
+        self.instructionLabel.textColor = [UIColor darkGrayColor];
+        self.codeBox.backgroundColor = [UIColor colorWithWhite:0.94 alpha:1.0];
+        self.codeLabel.textColor = [UIColor blackColor];
+        self.statusLabel.textColor = [UIColor grayColor];
+        self.refreshButton.backgroundColor = [UIColor colorWithWhite:0.90 alpha:1.0];
+        [self.refreshButton setTitleColor:[UIColor darkGrayColor] forState:UIControlStateNormal];
+    }
+}
+
+- (void)requestNewDeviceCode {
+    [self.pollTimer invalidate];
+    self.pollTimer = nil;
+    self.deviceCode = nil;
+    self.codeLabel.text = @"• • • •";
+    self.statusLabel.text = @"Генерация кода...";
+    self.refreshButton.enabled = NO;
+
+    [[YMApiClient shared] startDeviceAuthWithCompletion:^(NSString *deviceCode, NSString *userCode, NSString *verificationURL, NSInteger interval, NSError *error) {
+        self.refreshButton.enabled = YES;
+        if (error || !deviceCode || deviceCode.length == 0 || !userCode || userCode.length == 0) {
+            self.codeLabel.text = @"Ошибка";
+            self.statusLabel.text = @"Проверьте подключение к серверу";
+            return;
+        }
+        self.deviceCode = deviceCode;
+        self.codeLabel.text = userCode;
+        self.statusLabel.text = @"Ожидание подтверждения на ya.ru/device...";
+        self.pollInterval = MAX(3, interval);
+        self.pollTimer = [NSTimer scheduledTimerWithTimeInterval:self.pollInterval
+                                                          target:self
+                                                        selector:@selector(pollAuthStatus)
+                                                        userInfo:nil
+                                                         repeats:YES];
+    }];
+}
+
+- (void)pollAuthStatus {
+    if (!self.deviceCode || self.deviceCode.length == 0 || self.isPollingRequestInFlight) return;
+    self.isPollingRequestInFlight = YES;
+
+    [[YMApiClient shared] pollDeviceAuthWithCode:self.deviceCode completion:^(BOOL authorized, NSString *token, NSString *accountName, NSError *error) {
+        self.isPollingRequestInFlight = NO;
+        if (authorized) {
+            [self.pollTimer invalidate];
+            self.pollTimer = nil;
+            self.statusLabel.text = @"Вход выполнен!";
+            [[NSNotificationCenter defaultCenter] postNotificationName:YMLikesUpdatedNotification object:nil];
+            if (self.onAuthSuccess) {
+                self.onAuthSuccess();
+            }
+        }
+    }];
 }
 
 @end
@@ -342,7 +598,10 @@ static NSString *const kYMThemeDefaultsKey = @"YMSelectedAppTheme";
         _durationLabel.backgroundColor = [UIColor clearColor];
         [_frontView addSubview:_durationLabel];
 
-        _plusButton = [UIButton buttonWithType:UIButtonTypeContactAdd];
+        _plusButton = [UIButton buttonWithType:UIButtonTypeCustom];
+        [_plusButton setTitle:@"+" forState:UIControlStateNormal];
+        _plusButton.titleLabel.font = [UIFont boldSystemFontOfSize:18.0];
+        _plusButton.layer.cornerRadius = 14.0;
         [_plusButton addTarget:self action:@selector(onPlusTapped) forControlEvents:UIControlEventTouchUpInside];
         _plusButton.hidden = YES;
         [_frontView addSubview:_plusButton];
@@ -368,12 +627,37 @@ static NSString *const kYMThemeDefaultsKey = @"YMSelectedAppTheme";
     self.backgroundColor = [tm cellBackgroundColor];
     self.frontView.backgroundColor = [tm cellBackgroundColor];
     self.coverView.backgroundColor = [tm isDarkTheme] ? [UIColor colorWithWhite:0.15 alpha:1.0] : [UIColor colorWithWhite:0.90 alpha:1.0];
+    self.coverView.layer.cornerRadius = [tm isMaterialYouTheme] ? 8.0 : 3.0;
     self.titleLabel.textColor = [tm primaryTextColor];
     self.artistLabel.textColor = (tm.currentTheme == YMAppThemeLightYellow) ? [UIColor colorWithRed:0.82 green:0.60 blue:0.00 alpha:1.0] : [tm accentColor];
     self.durationLabel.textColor = [tm secondaryTextColor];
 
-    self.downloadBtn.backgroundColor = [tm accentColor];
-    [self.downloadBtn setTitleColor:(isFlat ? [UIColor blackColor] : [UIColor whiteColor]) forState:UIControlStateNormal];
+    if ([tm isMaterialYouTheme]) {
+        // Скромные минималистичные тональные кнопки для Material You
+        self.actionsHolder.backgroundColor = [tm backgroundColor];
+        self.downloadBtn.backgroundColor = [UIColor colorWithRed:0.22 green:0.19 blue:0.29 alpha:1.0];
+        [self.downloadBtn setTitleColor:[tm primaryTextColor] forState:UIControlStateNormal];
+        self.downloadBtn.titleLabel.font = [UIFont systemFontOfSize:11.0];
+
+        self.deleteBtn.backgroundColor = [UIColor colorWithRed:0.35 green:0.16 blue:0.18 alpha:1.0];
+        [self.deleteBtn setTitleColor:[UIColor colorWithRed:0.96 green:0.82 blue:0.84 alpha:1.0] forState:UIControlStateNormal];
+        self.deleteBtn.titleLabel.font = [UIFont systemFontOfSize:11.0];
+
+        self.plusButton.backgroundColor = [UIColor colorWithRed:0.20 green:0.18 blue:0.25 alpha:1.0];
+        [self.plusButton setTitleColor:[tm accentColor] forState:UIControlStateNormal];
+    } else {
+        self.actionsHolder.backgroundColor = [UIColor colorWithRed:0.20 green:0.20 blue:0.20 alpha:1.0];
+        self.downloadBtn.backgroundColor = [tm accentColor];
+        [self.downloadBtn setTitleColor:(isFlat ? [UIColor blackColor] : [UIColor whiteColor]) forState:UIControlStateNormal];
+        self.downloadBtn.titleLabel.font = [UIFont boldSystemFontOfSize:12.0];
+
+        self.deleteBtn.backgroundColor = [UIColor colorWithRed:0.90 green:0.20 blue:0.20 alpha:1.0];
+        [self.deleteBtn setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
+        self.deleteBtn.titleLabel.font = [UIFont boldSystemFontOfSize:12.0];
+
+        self.plusButton.backgroundColor = isFlat ? [UIColor colorWithWhite:0.20 alpha:0.25] : [tm accentColor];
+        [self.plusButton setTitleColor:(isFlat ? [tm accentColor] : [UIColor whiteColor]) forState:UIControlStateNormal];
+    }
 }
 
 - (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
@@ -416,8 +700,8 @@ static NSString *const kYMThemeDefaultsKey = @"YMSelectedAppTheme";
     CGFloat rightEdge = w - 12.0;
     if (self.showPlusButton) {
         self.plusButton.hidden = NO;
-        self.plusButton.frame = CGRectMake(rightEdge - 30.0, (h - 30.0) / 2.0, 30.0, 30.0);
-        rightEdge -= 36.0;
+        self.plusButton.frame = CGRectMake(rightEdge - 28.0, (h - 28.0) / 2.0, 28.0, 28.0);
+        rightEdge -= 34.0;
     } else {
         self.plusButton.hidden = YES;
     }
@@ -542,16 +826,21 @@ static NSString *const kYMThemeDefaultsKey = @"YMSelectedAppTheme";
     [_tableView addSubview:_refreshControl];
 
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(loadLikesFromServer) name:YMLikesUpdatedNotification object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(loadLikesFromServer) name:YMAuthStateChangedNotification object:nil];
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(applyTheme) name:YMThemeDidChangeNotification object:nil];
 
     [self applyTheme];
-    [self loadLikesFromServer];
+    if ([[YMApiClient shared] isAuthorized]) {
+        [self loadLikesFromServer];
+    }
 }
 
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
     [self applyTheme];
-    if (self.allTracks.count == 0 && !self.isLoading) [self loadLikesFromServer];
+    if (self.allTracks.count == 0 && !self.isLoading && [[YMApiClient shared] isAuthorized]) {
+        [self loadLikesFromServer];
+    }
 }
 
 - (void)applyTheme {
@@ -565,7 +854,10 @@ static NSString *const kYMThemeDefaultsKey = @"YMSelectedAppTheme";
 }
 
 - (void)loadLikesFromServer {
-    if (self.isLoading) return;
+    if (self.isLoading || ![[YMApiClient shared] isAuthorized]) {
+        [self.refreshControl endRefreshing];
+        return;
+    }
     self.isLoading = YES;
     [[YMApiClient shared] fetchLikesWithCompletion:^(NSArray *tracks, NSError *error) {
         self.isLoading = NO;
@@ -717,7 +1009,6 @@ static NSString *const kYMThemeDefaultsKey = @"YMSelectedAppTheme";
 - (void)viewDidLoad {
     [super viewDidLoad];
 
-    // 1. Заголовок в NavigationBar (Песня, Исполнитель, Альбом в 3 строки)
     UIView *titleView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 200, 40)];
 
     UILabel *titleTrackLabel = [[UILabel alloc] initWithFrame:CGRectMake(0, 0, 200, 15)];
@@ -744,8 +1035,6 @@ static NSString *const kYMThemeDefaultsKey = @"YMSelectedAppTheme";
     self.navigationItem.titleView = titleView;
 
     CGFloat w = self.view.bounds.size.width;
-
-    // 2. Ползунок перемотки с таймлайном (сразу под хедером)
     CGFloat sliderY = 10.0;
 
     _elapsedLabel = [[UILabel alloc] initWithFrame:CGRectMake(12.0, sliderY + 2.0, 42.0, 14.0)];
@@ -769,7 +1058,6 @@ static NSString *const kYMThemeDefaultsKey = @"YMSelectedAppTheme";
     [_seekSlider addTarget:self action:@selector(onSeekTouchUp) forControlEvents:UIControlEventTouchUpInside | UIControlEventTouchUpOutside | UIControlEventTouchCancel];
     [self.view addSubview:_seekSlider];
 
-    // 3. Нижняя панель управления строго над таббаром
     CGFloat bottomBarH = 54.0;
     CGFloat totalH = self.view.bounds.size.height;
 
@@ -794,13 +1082,11 @@ static NSString *const kYMThemeDefaultsKey = @"YMSelectedAppTheme";
     [_nextButton addTarget:self action:@selector(onNext) forControlEvents:UIControlEventTouchUpInside];
     [_bottomBar addSubview:_nextButton];
 
-    // 4. Ползунок громкости (MPVolumeView) между обложкой и нижними кнопками
     CGFloat volumeH = 30.0;
     CGFloat volumeY = _bottomBar.frame.origin.y - volumeH - 8.0;
     _volumeView = [[MPVolumeView alloc] initWithFrame:CGRectMake(36.0, volumeY, w - 72.0, volumeH)];
     [self.view addSubview:_volumeView];
 
-    // 5. Обложка трека (между таймлайном и ползунком громкости)
     CGFloat coverY = sliderY + 28.0;
     CGFloat coverBottomLimit = _volumeView.frame.origin.y - 8.0;
     CGFloat availableH = coverBottomLimit - coverY;
@@ -828,6 +1114,16 @@ static NSString *const kYMThemeDefaultsKey = @"YMSelectedAppTheme";
     CGFloat bottomBarH = 54.0;
     if (_bottomBar) {
         _bottomBar.frame = CGRectMake(0, h - bottomBarH, w, bottomBarH);
+        CGFloat btnW = w / 3.0;
+        if ([[YMThemeManager shared] isMaterialYouTheme]) {
+            _prevButton.frame = CGRectMake(24.0, 7.0, 64.0, 40.0);
+            _playPauseButton.frame = CGRectMake((w - 72.0) / 2.0, 5.0, 72.0, 44.0);
+            _nextButton.frame = CGRectMake(w - 88.0, 7.0, 64.0, 40.0);
+        } else {
+            _prevButton.frame = CGRectMake(0, 0, btnW, bottomBarH);
+            _playPauseButton.frame = CGRectMake(btnW, 0, btnW, bottomBarH);
+            _nextButton.frame = CGRectMake(btnW * 2.0, 0, btnW, bottomBarH);
+        }
     }
     if (_volumeView && _bottomBar) {
         CGFloat volumeH = 30.0;
@@ -858,7 +1154,50 @@ static NSString *const kYMThemeDefaultsKey = @"YMSelectedAppTheme";
     UILabel *artistLabel = (UILabel *)[tv viewWithTag:102];
     UILabel *albumLabel = (UILabel *)[tv viewWithTag:103];
 
-    if (tm.currentTheme == YMAppThemeDarkYellow || tm.currentTheme == YMAppThemeLightYellow) {
+    if (tm.currentTheme == YMAppThemeMaterialYou) {
+        self.view.backgroundColor = [tm backgroundColor];
+        titleTrackLabel.textColor = [tm primaryTextColor];
+        artistLabel.textColor = [tm accentColor];
+        albumLabel.textColor = [tm secondaryTextColor];
+
+        self.elapsedLabel.textColor = [tm secondaryTextColor];
+        self.remainingLabel.textColor = [tm secondaryTextColor];
+
+        if ([self.seekSlider respondsToSelector:@selector(setMinimumTrackTintColor:)]) {
+            self.seekSlider.minimumTrackTintColor = [tm accentColor];
+        }
+        if ([self.volumeView respondsToSelector:@selector(setTintColor:)]) {
+            self.volumeView.tintColor = [tm accentColor];
+        }
+
+        self.coverImageView.backgroundColor = [tm cellBackgroundColor];
+        self.coverImageView.layer.cornerRadius = 20.0;
+        self.coverImageView.layer.borderWidth = 0.0;
+
+        // Минималистичная нижняя панель без рамок и плашек
+        self.bottomBar.backgroundColor = [UIColor clearColor];
+
+        self.prevButton.backgroundColor = [UIColor clearColor];
+        self.prevButton.layer.borderWidth = 0.0;
+        self.prevButton.layer.cornerRadius = 20.0;
+        [self.prevButton setBackgroundImage:nil forState:UIControlStateNormal];
+
+        self.nextButton.backgroundColor = [UIColor clearColor];
+        self.nextButton.layer.borderWidth = 0.0;
+        self.nextButton.layer.cornerRadius = 20.0;
+        [self.nextButton setBackgroundImage:nil forState:UIControlStateNormal];
+
+        // Скромная тональная пилюля только для центральной кнопки Play/Pause
+        self.playPauseButton.backgroundColor = [UIColor colorWithRed:0.20 green:0.18 blue:0.26 alpha:1.0];
+        self.playPauseButton.layer.borderWidth = 0.0;
+        self.playPauseButton.layer.cornerRadius = 22.0;
+        [self.playPauseButton setBackgroundImage:nil forState:UIControlStateNormal];
+
+        UIColor *m3SubtleIcon = [tm secondaryTextColor];
+        [self.prevButton setImage:[[UIImage imageNamed:@"player_prev"] ym_tintedImageWithColor:m3SubtleIcon] forState:UIControlStateNormal];
+        [self.nextButton setImage:[[UIImage imageNamed:@"player_next"] ym_tintedImageWithColor:m3SubtleIcon] forState:UIControlStateNormal];
+
+    } else if (tm.currentTheme == YMAppThemeDarkYellow || tm.currentTheme == YMAppThemeLightYellow) {
         self.view.backgroundColor = [UIColor blackColor];
         titleTrackLabel.textColor = [UIColor whiteColor];
         artistLabel.textColor = [tm accentColor];
@@ -875,6 +1214,8 @@ static NSString *const kYMThemeDefaultsKey = @"YMSelectedAppTheme";
         }
 
         self.coverImageView.backgroundColor = [UIColor colorWithWhite:0.10 alpha:1.0];
+        self.coverImageView.layer.cornerRadius = 6.0;
+        self.coverImageView.layer.borderWidth = 1.0;
         self.coverImageView.layer.borderColor = [UIColor colorWithWhite:0.20 alpha:1.0].CGColor;
         self.bottomBar.backgroundColor = [UIColor colorWithRed:0.04 green:0.04 blue:0.04 alpha:1.0];
 
@@ -883,6 +1224,7 @@ static NSString *const kYMThemeDefaultsKey = @"YMSelectedAppTheme";
             [b setBackgroundImage:nil forState:UIControlStateNormal];
             b.backgroundColor = [UIColor colorWithRed:0.08 green:0.08 blue:0.08 alpha:1.0];
             b.layer.borderWidth = 0.0;
+            b.layer.cornerRadius = 0.0;
         }
 
         UIColor *yCol = [tm accentColor];
@@ -906,6 +1248,8 @@ static NSString *const kYMThemeDefaultsKey = @"YMSelectedAppTheme";
         }
 
         self.coverImageView.backgroundColor = [UIColor colorWithWhite:0.15 alpha:1.0];
+        self.coverImageView.layer.cornerRadius = 6.0;
+        self.coverImageView.layer.borderWidth = 1.0;
         self.coverImageView.layer.borderColor = [UIColor colorWithWhite:0.45 alpha:1.0].CGColor;
 
         UIImage *glossImg = [tm glossyBarBackgroundWithHeight:54.0];
@@ -914,6 +1258,7 @@ static NSString *const kYMThemeDefaultsKey = @"YMSelectedAppTheme";
             [b setBackgroundImage:glossImg forState:UIControlStateNormal];
             b.backgroundColor = [UIColor clearColor];
             b.layer.borderWidth = 0.5;
+            b.layer.cornerRadius = 0.0;
             b.layer.borderColor = [UIColor colorWithWhite:0.05 alpha:0.8].CGColor;
         }
 
@@ -922,6 +1267,7 @@ static NSString *const kYMThemeDefaultsKey = @"YMSelectedAppTheme";
         [self.nextButton setImage:[[UIImage imageNamed:@"player_next"] ym_tintedImageWithColor:whiteCol] forState:UIControlStateNormal];
     }
 
+    [self.view setNeedsLayout];
     [self refreshPlayerUI];
 }
 
@@ -1244,10 +1590,173 @@ static NSString *const kYMThemeDefaultsKey = @"YMSelectedAppTheme";
 
 @end
 
-#pragma mark - 5. YMSettingsViewController (Выбор из 3 тем оформления)
+#pragma mark - 5A. YMThemeSettingsViewController (Внутренняя вкладка "Оформление" — панель с выбором)
 
-@interface YMSettingsViewController ()
-@property (nonatomic, strong) UITableView *tableView;
+@interface YMThemeSettingsViewController ()
+@property (nonatomic, strong) UIScrollView *scrollView;
+@property (nonatomic, strong) UILabel *sectionHeaderLabel;
+@property (nonatomic, strong) UIView *selectionPanel;
+@property (nonatomic, strong) NSMutableArray *optionButtons;
+@property (nonatomic, strong) NSMutableArray *optionTitles;
+@property (nonatomic, strong) NSMutableArray *optionSubtitles;
+@property (nonatomic, strong) NSMutableArray *optionChecks;
+@property (nonatomic, strong) NSMutableArray *dividers;
+@end
+
+@implementation YMThemeSettingsViewController
+
+- (void)dealloc {
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
+}
+
+- (void)viewDidLoad {
+    [super viewDidLoad];
+    self.title = @"Оформление";
+
+    _scrollView = [[UIScrollView alloc] initWithFrame:self.view.bounds];
+    _scrollView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    _scrollView.alwaysBounceVertical = YES;
+    [self.view addSubview:_scrollView];
+
+    CGFloat w = self.view.bounds.size.width;
+
+    _sectionHeaderLabel = [[UILabel alloc] initWithFrame:CGRectMake(24.0, 18.0, w - 48.0, 18.0)];
+    _sectionHeaderLabel.font = [UIFont boldSystemFontOfSize:13.0];
+    _sectionHeaderLabel.backgroundColor = [UIColor clearColor];
+    _sectionHeaderLabel.text = @"ВЫБОР ТЕМЫ";
+    [_scrollView addSubview:_sectionHeaderLabel];
+
+    CGFloat rowH = 58.0;
+    NSArray *titles = @[
+        @"Тёмная (Жёлтый акцент)",
+        @"Классическая iOS 6",
+        @"Светлая (Жёлтый акцент)",
+        @"Material You"
+    ];
+    NSArray *subs = @[
+        @"Тёмная тема без скевоморфизма",
+        @"Интерфейс iOS 6 со скевоморфизмом",
+        @"Светлая тема без скевоморфизма",
+        @"Минималистичная палитра Android"
+    ];
+
+    CGFloat panelW = w - 32.0;
+    CGFloat panelH = rowH * titles.count;
+    _selectionPanel = [[UIView alloc] initWithFrame:CGRectMake(16.0, 42.0, panelW, panelH)];
+    _selectionPanel.layer.cornerRadius = 14.0;
+    _selectionPanel.clipsToBounds = YES;
+    [_scrollView addSubview:_selectionPanel];
+
+    _optionButtons = [NSMutableArray array];
+    _optionTitles = [NSMutableArray array];
+    _optionSubtitles = [NSMutableArray array];
+    _optionChecks = [NSMutableArray array];
+    _dividers = [NSMutableArray array];
+
+    for (NSUInteger i = 0; i < titles.count; i++) {
+        CGFloat y = i * rowH;
+
+        UIButton *btn = [UIButton buttonWithType:UIButtonTypeCustom];
+        btn.frame = CGRectMake(0, y, panelW, rowH);
+        btn.tag = (NSInteger)i;
+        [btn addTarget:self action:@selector(onThemeOptionTapped:) forControlEvents:UIControlEventTouchUpInside];
+        [_selectionPanel addSubview:btn];
+        [_optionButtons addObject:btn];
+
+        UILabel *tLbl = [[UILabel alloc] initWithFrame:CGRectMake(16.0, y + 10.0, panelW - 56.0, 20.0)];
+        tLbl.font = [UIFont boldSystemFontOfSize:15.0];
+        tLbl.backgroundColor = [UIColor clearColor];
+        tLbl.text = titles[i];
+        [_selectionPanel addSubview:tLbl];
+        [_optionTitles addObject:tLbl];
+
+        UILabel *sLbl = [[UILabel alloc] initWithFrame:CGRectMake(16.0, y + 31.0, panelW - 56.0, 16.0)];
+        sLbl.font = [UIFont systemFontOfSize:12.0];
+        sLbl.backgroundColor = [UIColor clearColor];
+        sLbl.text = subs[i];
+        [_selectionPanel addSubview:sLbl];
+        [_optionSubtitles addObject:sLbl];
+
+        UILabel *chkLbl = [[UILabel alloc] initWithFrame:CGRectMake(panelW - 36.0, y + (rowH - 24.0) / 2.0, 24.0, 24.0)];
+        chkLbl.font = [UIFont boldSystemFontOfSize:18.0];
+        chkLbl.textAlignment = NSTextAlignmentCenter;
+        chkLbl.backgroundColor = [UIColor clearColor];
+        chkLbl.text = @"✓";
+        [_selectionPanel addSubview:chkLbl];
+        [_optionChecks addObject:chkLbl];
+
+        if (i > 0) {
+            UIView *div = [[UIView alloc] initWithFrame:CGRectMake(16.0, y, panelW - 16.0, 1.0)];
+            [_selectionPanel addSubview:div];
+            [_dividers addObject:div];
+        }
+    }
+
+    _scrollView.contentSize = CGSizeMake(w, 42.0 + panelH + 30.0);
+
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(applyTheme) name:YMThemeDidChangeNotification object:nil];
+    [self applyTheme];
+}
+
+- (void)applyTheme {
+    YMThemeManager *tm = [YMThemeManager shared];
+    [tm applyThemeToNavigationController:self.navigationController];
+    [tm applyThemeToTabBarController:self.tabBarController];
+
+    self.view.backgroundColor = [tm backgroundColor];
+    self.scrollView.backgroundColor = [tm backgroundColor];
+    self.sectionHeaderLabel.textColor = [tm secondaryTextColor];
+
+    if ([tm isDarkTheme]) {
+        self.selectionPanel.backgroundColor = [tm isMaterialYouTheme] ? [tm cellBackgroundColor] : [UIColor colorWithWhite:0.11 alpha:1.0];
+        self.selectionPanel.layer.borderWidth = 0.0;
+    } else {
+        self.selectionPanel.backgroundColor = [UIColor colorWithWhite:0.95 alpha:1.0];
+        self.selectionPanel.layer.borderWidth = 1.0;
+        self.selectionPanel.layer.borderColor = [tm separatorColor].CGColor;
+    }
+
+    self.selectionPanel.layer.cornerRadius = [tm isMaterialYouTheme] ? 18.0 : 10.0;
+
+    for (NSUInteger i = 0; i < self.optionTitles.count; i++) {
+        UILabel *tLbl = self.optionTitles[i];
+        UILabel *sLbl = self.optionSubtitles[i];
+        UILabel *chkLbl = self.optionChecks[i];
+
+        tLbl.textColor = [tm primaryTextColor];
+        sLbl.textColor = [tm secondaryTextColor];
+        chkLbl.textColor = [tm accentColor];
+        chkLbl.hidden = (tm.currentTheme != (YMAppTheme)i);
+    }
+
+    for (UIView *div in self.dividers) {
+        div.backgroundColor = [tm separatorColor];
+    }
+}
+
+- (void)onThemeOptionTapped:(UIButton *)sender {
+    [YMThemeManager shared].currentTheme = (YMAppTheme)sender.tag;
+}
+
+@end
+
+#pragma mark - 5B. YMSettingsViewController (Панель аккаунта, выход и кнопки внутренних вкладок)
+
+@interface YMSettingsViewController () <UIAlertViewDelegate>
+@property (nonatomic, strong) UIScrollView *scrollView;
+@property (nonatomic, strong) UIView *accountPanel;
+@property (nonatomic, strong) UIView *avatarCircle;
+@property (nonatomic, strong) UILabel *avatarLetterLabel;
+@property (nonatomic, strong) UILabel *accountCaptionLabel;
+@property (nonatomic, strong) UILabel *accountNameLabel;
+@property (nonatomic, strong) UIButton *logoutButton;
+
+@property (nonatomic, strong) UILabel *sectionsHeaderLabel;
+@property (nonatomic, strong) UIView *menuPanel;
+@property (nonatomic, strong) UIButton *appearanceButton;
+@property (nonatomic, strong) UILabel *appearanceTitleLabel;
+@property (nonatomic, strong) UILabel *appearanceValueLabel;
+@property (nonatomic, strong) UILabel *appearanceArrowLabel;
 @end
 
 @implementation YMSettingsViewController
@@ -1260,20 +1769,109 @@ static NSString *const kYMThemeDefaultsKey = @"YMSelectedAppTheme";
     [super viewDidLoad];
     self.title = @"Настройки";
 
-    _tableView = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStylePlain];
-    _tableView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-    _tableView.dataSource = self;
-    _tableView.delegate = self;
-    _tableView.rowHeight = 52.0;
-    [self.view addSubview:_tableView];
+    _scrollView = [[UIScrollView alloc] initWithFrame:self.view.bounds];
+    _scrollView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    _scrollView.alwaysBounceVertical = YES;
+    [self.view addSubview:_scrollView];
+
+    CGFloat w = self.view.bounds.size.width;
+    CGFloat panelW = w - 32.0;
+
+    // 1. Панель аккаунта
+    _accountPanel = [[UIView alloc] initWithFrame:CGRectMake(16.0, 18.0, panelW, 68.0)];
+    _accountPanel.layer.cornerRadius = 14.0;
+    _accountPanel.clipsToBounds = YES;
+    [_scrollView addSubview:_accountPanel];
+
+    _avatarCircle = [[UIView alloc] initWithFrame:CGRectMake(14.0, 14.0, 40.0, 40.0)];
+    _avatarCircle.layer.cornerRadius = 20.0;
+    [_accountPanel addSubview:_avatarCircle];
+
+    _avatarLetterLabel = [[UILabel alloc] initWithFrame:_avatarCircle.bounds];
+    _avatarLetterLabel.font = [UIFont boldSystemFontOfSize:18.0];
+    _avatarLetterLabel.textAlignment = NSTextAlignmentCenter;
+    _avatarLetterLabel.backgroundColor = [UIColor clearColor];
+    [_avatarCircle addSubview:_avatarLetterLabel];
+
+    _accountCaptionLabel = [[UILabel alloc] initWithFrame:CGRectMake(66.0, 15.0, panelW - 80.0, 16.0)];
+    _accountCaptionLabel.font = [UIFont systemFontOfSize:12.0];
+    _accountCaptionLabel.backgroundColor = [UIColor clearColor];
+    _accountCaptionLabel.text = @"Аккаунт Яндекс";
+    [_accountPanel addSubview:_accountCaptionLabel];
+
+    _accountNameLabel = [[UILabel alloc] initWithFrame:CGRectMake(66.0, 33.0, panelW - 80.0, 22.0)];
+    _accountNameLabel.font = [UIFont boldSystemFontOfSize:16.0];
+    _accountNameLabel.backgroundColor = [UIColor clearColor];
+    [_accountPanel addSubview:_accountNameLabel];
+
+    // 2. Кнопка выхода из аккаунта (под панелью с именем)
+    _logoutButton = [UIButton buttonWithType:UIButtonTypeCustom];
+    _logoutButton.frame = CGRectMake(16.0, 94.0, panelW, 42.0);
+    _logoutButton.titleLabel.font = [UIFont boldSystemFontOfSize:14.0];
+    [_logoutButton setTitle:@"Выйти из аккаунта" forState:UIControlStateNormal];
+    [_logoutButton addTarget:self action:@selector(onLogoutTapped) forControlEvents:UIControlEventTouchUpInside];
+    [_scrollView addSubview:_logoutButton];
+
+    // 3. Разделы настроек (кнопки перекидывания во внутренние вкладки)
+    _sectionsHeaderLabel = [[UILabel alloc] initWithFrame:CGRectMake(24.0, 152.0, panelW, 18.0)];
+    _sectionsHeaderLabel.font = [UIFont boldSystemFontOfSize:13.0];
+    _sectionsHeaderLabel.backgroundColor = [UIColor clearColor];
+    _sectionsHeaderLabel.text = @"РАЗДЕЛЫ";
+    [_scrollView addSubview:_sectionsHeaderLabel];
+
+    _menuPanel = [[UIView alloc] initWithFrame:CGRectMake(16.0, 176.0, panelW, 56.0)];
+    _menuPanel.layer.cornerRadius = 14.0;
+    _menuPanel.clipsToBounds = YES;
+    [_scrollView addSubview:_menuPanel];
+
+    _appearanceButton = [UIButton buttonWithType:UIButtonTypeCustom];
+    _appearanceButton.frame = _menuPanel.bounds;
+    [_appearanceButton addTarget:self action:@selector(openAppearanceTab) forControlEvents:UIControlEventTouchUpInside];
+    [_menuPanel addSubview:_appearanceButton];
+
+    _appearanceTitleLabel = [[UILabel alloc] initWithFrame:CGRectMake(16.0, 10.0, panelW - 50.0, 20.0)];
+    _appearanceTitleLabel.font = [UIFont boldSystemFontOfSize:15.0];
+    _appearanceTitleLabel.backgroundColor = [UIColor clearColor];
+    _appearanceTitleLabel.text = @"Оформление";
+    [_menuPanel addSubview:_appearanceTitleLabel];
+
+    _appearanceValueLabel = [[UILabel alloc] initWithFrame:CGRectMake(16.0, 30.0, panelW - 50.0, 16.0)];
+    _appearanceValueLabel.font = [UIFont systemFontOfSize:12.0];
+    _appearanceValueLabel.backgroundColor = [UIColor clearColor];
+    [_menuPanel addSubview:_appearanceValueLabel];
+
+    _appearanceArrowLabel = [[UILabel alloc] initWithFrame:CGRectMake(panelW - 30.0, 18.0, 16.0, 20.0)];
+    _appearanceArrowLabel.font = [UIFont boldSystemFontOfSize:16.0];
+    _appearanceArrowLabel.textAlignment = NSTextAlignmentRight;
+    _appearanceArrowLabel.backgroundColor = [UIColor clearColor];
+    _appearanceArrowLabel.text = @"›";
+    [_menuPanel addSubview:_appearanceArrowLabel];
+
+    _scrollView.contentSize = CGSizeMake(w, 260.0);
 
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(applyTheme) name:YMThemeDidChangeNotification object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(refreshAccountPanel) name:YMAuthStateChangedNotification object:nil];
+
     [self applyTheme];
+    [self refreshAccountPanel];
 }
 
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
     [self applyTheme];
+    [self refreshAccountPanel];
+    [[YMApiClient shared] fetchAccountInfoWithCompletion:^(NSString *accountName, NSError *error) {
+        [self refreshAccountPanel];
+    }];
+}
+
+- (void)refreshAccountPanel {
+    NSString *acc = [YMApiClient shared].accountName;
+    if (!acc || acc.length == 0) {
+        acc = [[YMApiClient shared] isAuthorized] ? @"Загрузка профиля..." : @"Не авторизован";
+    }
+    self.accountNameLabel.text = acc;
+    self.avatarLetterLabel.text = (acc.length > 0) ? [[acc substringToIndex:1] uppercaseString] : @"Я";
 }
 
 - (void)applyTheme {
@@ -1282,65 +1880,83 @@ static NSString *const kYMThemeDefaultsKey = @"YMSelectedAppTheme";
     [tm applyThemeToTabBarController:self.tabBarController];
 
     self.view.backgroundColor = [tm backgroundColor];
-    self.tableView.backgroundColor = [tm backgroundColor];
-    self.tableView.separatorColor = [tm separatorColor];
-    [self.tableView reloadData];
-}
+    self.scrollView.backgroundColor = [tm backgroundColor];
 
-- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
-    return 1;
-}
-
-- (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
-    return @"Оформление (Темы)";
-}
-
-- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-    return 3;
-}
-
-- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
-    static NSString *themeCellId = @"ThemeOptionCell";
-    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:themeCellId];
-    if (!cell) {
-        cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:themeCellId];
-    }
-
-    YMThemeManager *tm = [YMThemeManager shared];
-    BOOL isFlat = [tm isFlatTheme];
-
-    cell.backgroundColor = [tm cellBackgroundColor];
-    cell.contentView.backgroundColor = [tm cellBackgroundColor];
-    cell.textLabel.textColor = [tm primaryTextColor];
-    cell.detailTextLabel.textColor = [tm secondaryTextColor];
-    cell.selectionStyle = isFlat ? UITableViewCellSelectionStyleGray : UITableViewCellSelectionStyleBlue;
-
-    if (indexPath.row == 0) {
-        cell.textLabel.text = @"Тёмная (Жёлтый акцент)";
-        cell.detailTextLabel.text = @"Тёмная тема без скевоморфизма";
-        cell.accessoryType = (tm.currentTheme == YMAppThemeDarkYellow) ? UITableViewCellAccessoryCheckmark : UITableViewCellAccessoryNone;
-    } else if (indexPath.row == 1) {
-        cell.textLabel.text = @"Классическая iOS 6";
-        cell.detailTextLabel.text = @"Интерфейс iOS 6 со скевоморфизмом";
-        cell.accessoryType = (tm.currentTheme == YMAppThemeClassicIOS6) ? UITableViewCellAccessoryCheckmark : UITableViewCellAccessoryNone;
+    UIColor *panelBg = nil;
+    if ([tm isDarkTheme]) {
+        panelBg = [tm isMaterialYouTheme] ? [tm cellBackgroundColor] : [UIColor colorWithWhite:0.11 alpha:1.0];
+        self.accountPanel.layer.borderWidth = 0.0;
+        self.menuPanel.layer.borderWidth = 0.0;
     } else {
-        cell.textLabel.text = @"Светлая (Жёлтый акцент)";
-        cell.detailTextLabel.text = @"Светлая тема без скевоморфизма";
-        cell.accessoryType = (tm.currentTheme == YMAppThemeLightYellow) ? UITableViewCellAccessoryCheckmark : UITableViewCellAccessoryNone;
+        panelBg = [UIColor colorWithWhite:0.95 alpha:1.0];
+        self.accountPanel.layer.borderWidth = 1.0;
+        self.accountPanel.layer.borderColor = [tm separatorColor].CGColor;
+        self.menuPanel.layer.borderWidth = 1.0;
+        self.menuPanel.layer.borderColor = [tm separatorColor].CGColor;
     }
 
-    return cell;
+    CGFloat radius = [tm isMaterialYouTheme] ? 18.0 : 10.0;
+    self.accountPanel.backgroundColor = panelBg;
+    self.accountPanel.layer.cornerRadius = radius;
+    self.menuPanel.backgroundColor = panelBg;
+    self.menuPanel.layer.cornerRadius = radius;
+
+    if ([tm isMaterialYouTheme]) {
+        self.avatarCircle.backgroundColor = [UIColor colorWithRed:0.22 green:0.19 blue:0.29 alpha:1.0];
+        self.avatarLetterLabel.textColor = [tm accentColor];
+    } else {
+        self.avatarCircle.backgroundColor = [tm accentColor];
+        self.avatarLetterLabel.textColor = [tm isFlatTheme] ? [UIColor blackColor] : [UIColor whiteColor];
+    }
+
+    self.logoutButton.layer.cornerRadius = radius;
+    if ([tm isMaterialYouTheme]) {
+        self.logoutButton.backgroundColor = [UIColor colorWithRed:0.22 green:0.15 blue:0.17 alpha:1.0];
+        [self.logoutButton setTitleColor:[UIColor colorWithRed:0.95 green:0.72 blue:0.75 alpha:1.0] forState:UIControlStateNormal];
+        self.logoutButton.titleLabel.font = [UIFont systemFontOfSize:14.0];
+        self.logoutButton.layer.borderWidth = 0.0;
+    } else if ([tm isDarkTheme]) {
+        self.logoutButton.backgroundColor = [UIColor colorWithWhite:0.11 alpha:1.0];
+        [self.logoutButton setTitleColor:[UIColor colorWithRed:0.95 green:0.30 blue:0.30 alpha:1.0] forState:UIControlStateNormal];
+        self.logoutButton.titleLabel.font = [UIFont boldSystemFontOfSize:14.0];
+        self.logoutButton.layer.borderWidth = 0.0;
+    } else {
+        self.logoutButton.backgroundColor = [UIColor colorWithWhite:0.95 alpha:1.0];
+        [self.logoutButton setTitleColor:[UIColor colorWithRed:0.85 green:0.18 blue:0.18 alpha:1.0] forState:UIControlStateNormal];
+        self.logoutButton.titleLabel.font = [UIFont boldSystemFontOfSize:14.0];
+        self.logoutButton.layer.borderWidth = 1.0;
+        self.logoutButton.layer.borderColor = [tm separatorColor].CGColor;
+    }
+
+    self.accountCaptionLabel.textColor = [tm secondaryTextColor];
+    self.accountNameLabel.textColor = [tm primaryTextColor];
+    self.sectionsHeaderLabel.textColor = [tm secondaryTextColor];
+
+    self.appearanceTitleLabel.textColor = [tm primaryTextColor];
+    self.appearanceValueLabel.textColor = [tm secondaryTextColor];
+    self.appearanceValueLabel.text = [tm currentThemeDisplayName];
+    self.appearanceArrowLabel.textColor = [tm secondaryTextColor];
 }
 
-- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
-    [tableView deselectRowAtIndexPath:indexPath animated:YES];
-    if (indexPath.row == 0) {
-        [YMThemeManager shared].currentTheme = YMAppThemeDarkYellow;
-    } else if (indexPath.row == 1) {
-        [YMThemeManager shared].currentTheme = YMAppThemeClassicIOS6;
-    } else {
-        [YMThemeManager shared].currentTheme = YMAppThemeLightYellow;
+- (void)onLogoutTapped {
+    UIAlertView *alert = [[UIAlertView alloc] initWithTitle:@"Выход из аккаунта"
+                                                    message:@"Вы действительно хотите выйти из своего аккаунта Яндекс?"
+                                                   delegate:self
+                                          cancelButtonTitle:@"Отмена"
+                                          otherButtonTitles:@"Выйти", nil];
+    [alert show];
+}
+
+- (void)alertView:(UIAlertView *)alertView clickedButtonAtIndex:(NSInteger)buttonIndex {
+    if (buttonIndex == 1) {
+        [[YMApiClient shared] logout];
+        [self refreshAccountPanel];
     }
+}
+
+- (void)openAppearanceTab {
+    YMThemeSettingsViewController *themeVC = [[YMThemeSettingsViewController alloc] init];
+    [self.navigationController pushViewController:themeVC animated:YES];
 }
 
 @end
