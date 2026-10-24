@@ -1,6 +1,10 @@
 # main.py
 import os
 import json
+import time
+import threading
+from collections import deque
+from datetime import datetime, timezone
 from flask import Flask, request, jsonify, Response
 import requests
 from yandex_music import Client
@@ -12,6 +16,18 @@ YANDEX_CLIENT_SECRET = "53bc75238f0c4d08a118e51fe9203300"
 
 AUTH_CACHE_FILE = "auth_state.json"
 _clients = {}
+
+# Сессии "Моей Волны" для каждого токена
+_wave_sessions = {}
+_wave_lock = threading.Lock()
+
+# Кэш прямых ссылок на MP3 и предзагруженных стартовых чанков
+_direct_url_cache = {}
+_preloaded_chunks = {}
+_cache_lock = threading.Lock()
+
+DIRECT_URL_TTL = 600  # 10 минут
+PRELOAD_BYTES = 262144  # 256 КБ стартового буфера в RAM прокси
 
 
 def save_auth_state(token: str, account_name: str = ""):
@@ -49,7 +65,6 @@ def get_client(token: str) -> Client:
 
 
 def fetch_account_name(token: str) -> str:
-    # 1. Пробуем получить имя из Yandex Passport API
     try:
         r = requests.get(
             "https://login.yandex.ru/info?format=json",
@@ -69,7 +84,6 @@ def fetch_account_name(token: str) -> str:
     except Exception:
         pass
 
-    # 2. Фолбэк через клиент Яндекс Музыки
     try:
         client = get_client(token)
         if client.me and client.me.account:
@@ -84,12 +98,52 @@ def fetch_account_name(token: str) -> str:
 
 
 def resolve_direct_mp3_url(track_id: str, client: Client) -> str:
+    now = time.time()
+    with _cache_lock:
+        cached = _direct_url_cache.get(track_id)
+        if cached and (now - cached["ts"] < DIRECT_URL_TTL):
+            return cached["url"]
+
     infos = client.tracks_download_info(track_id, get_direct_links=True)
     if not infos:
         raise RuntimeError("No download info available for track")
     mp3_infos = [i for i in infos if i.codec == "mp3"] or infos
     best = sorted(mp3_infos, key=lambda x: x.bitrate_in_kbps or 0, reverse=True)[0]
-    return best.direct_link or best.get_direct_link()
+    url = best.direct_link or best.get_direct_link()
+
+    with _cache_lock:
+        if len(_direct_url_cache) > 200:
+            _direct_url_cache.clear()
+        _direct_url_cache[track_id] = {"url": url, "ts": now}
+
+    return url
+
+
+def preload_track_async(track_id: str, token: str):
+    def _worker():
+        try:
+            client = get_client(token)
+            direct_url = resolve_direct_mp3_url(track_id, client)
+            with _cache_lock:
+                if track_id in _preloaded_chunks:
+                    return
+            r = requests.get(
+                direct_url,
+                headers={"Range": f"bytes=0-{PRELOAD_BYTES - 1}"},
+                timeout=10,
+            )
+            if r.status_code in (200, 206) and r.content:
+                with _cache_lock:
+                    if len(_preloaded_chunks) > 30:
+                        _preloaded_chunks.clear()
+                    _preloaded_chunks[track_id] = {
+                        "data": r.content,
+                        "ts": time.time(),
+                    }
+        except Exception:
+            pass
+
+    threading.Thread(target=_worker, daemon=True).start()
 
 
 def format_track(track, host_url: str, token: str) -> dict:
@@ -98,18 +152,21 @@ def format_track(track, host_url: str, token: str) -> dict:
     artists = ", ".join(a.name for a in (track.artists or []) if a.name) or "Неизвестен"
     albums = track.albums or []
     album_title = (albums[0].title or "") if albums else ""
+    album_id = str(albums[0].id) if (albums and getattr(albums[0], "id", None)) else ""
+    full_rotor_id = f"{track_id}:{album_id}" if album_id else track_id
     duration_sec = int(track.duration_ms or 0) // 1000
 
     cover_uri = track.cover_uri or (albums[0].cover_uri if albums and albums[0].cover_uri else "")
     cover_url = ""
     if cover_uri:
-        clean_uri = cover_uri.replace("%%", "200x200")
+        clean_uri = cover_uri.replace("%%", "1000x1000")
         cover_url = f"{host_url.rstrip('/')}/cover?uri={clean_uri}"
 
     stream_url = f"{host_url.rstrip('/')}/get-stream/{track_id}.mp3"
 
     return {
         "id": track_id,
+        "rotor_id": full_rotor_id,
         "title": title,
         "artist": artists,
         "album": album_title,
@@ -117,6 +174,57 @@ def format_track(track, host_url: str, token: str) -> dict:
         "cover_url": cover_url,
         "stream_url": stream_url,
     }
+
+
+def _get_wave_session(token: str) -> dict:
+    with _wave_lock:
+        if token not in _wave_sessions:
+            _wave_sessions[token] = {
+                "batch_id": None,
+                "seen_ids": deque(maxlen=400),
+                "last_batch_tracks": [],  # список кортежей (track_id, full_rotor_id, duration_sec)
+                "radio_started": False,
+            }
+        return _wave_sessions[token]
+
+
+def _send_rotor_feedback(client: Client, feedback_type: str, batch_id: str = None, track_id: str = None, played_sec: float = 0.0):
+    now_iso = datetime.now(timezone.utc).isoformat()
+    station = "user:onyourwave"
+    from_str = "mobile-home-rup_main-user-onyourwave-default"
+    try:
+        if feedback_type == "radioStarted":
+            client.rotor_station_feedback_radio_started(station=station, from_=from_str, timestamp=now_iso)
+        elif feedback_type == "trackStarted" and track_id:
+            client.rotor_station_feedback_track_started(station=station, track_id=track_id, batch_id=batch_id, timestamp=now_iso)
+        elif feedback_type == "trackFinished" and track_id:
+            client.rotor_station_feedback_track_finished(
+                station=station,
+                track_id=track_id,
+                total_played_seconds=max(1.0, float(played_sec)),
+                batch_id=batch_id,
+                timestamp=now_iso,
+            )
+        elif feedback_type == "skip" and track_id:
+            client.rotor_station_feedback_skip(
+                station=station,
+                track_id=track_id,
+                total_played_seconds=max(1.0, float(played_sec)),
+                batch_id=batch_id,
+                timestamp=now_iso,
+            )
+        else:
+            client.rotor_station_feedback(
+                station=station,
+                type_=feedback_type,
+                timestamp=now_iso,
+                from_=from_str,
+                batch_id=batch_id,
+                track_id=track_id,
+                total_played_seconds=played_sec if played_sec > 0 else None,
+            )
+    except Exception:
+        pass
 
 
 @app.route("/auth/device/start", methods=["POST", "GET"])
@@ -187,6 +295,135 @@ def get_account():
     account_name = fetch_account_name(token)
     save_auth_state(token, account_name)
     return jsonify({"account_name": account_name})
+
+
+@app.route("/rotor/wave", methods=["GET"])
+def get_my_wave():
+    token = get_token()
+    if not token:
+        return jsonify({"error": "Missing token"}), 401
+    try:
+        client = get_client(token)
+        session = _get_wave_session(token)
+        reset_flag = request.args.get("reset", "0") == "1"
+        queue_arg = request.args.get("queue", "").strip()
+
+        if reset_flag or not session["radio_started"]:
+            _send_rotor_feedback(client, "radioStarted")
+            session["radio_started"] = True
+
+        host = request.host_url
+        collected_tracks = []
+
+        # Делаем до 4 запросов к Ротору, если Яндекс вернул уже проигранные треки
+        for _ in range(4):
+            prev_batch_id = session["batch_id"]
+            prev_tracks = session["last_batch_tracks"]
+
+            queue_param = None
+            if prev_tracks:
+                # Отправляем фидбек по предыдущей пачке, чтобы Яндекс сдвинул волну вперёд
+                for _, full_id, dur in prev_tracks:
+                    _send_rotor_feedback(client, "trackStarted", batch_id=prev_batch_id, track_id=full_id)
+                    _send_rotor_feedback(client, "trackFinished", batch_id=prev_batch_id, track_id=full_id, played_sec=max(30, dur))
+                queue_param = prev_tracks[-1][1]
+            elif queue_arg:
+                queue_param = queue_arg
+
+            station_result = client.rotor_station_tracks("user:onyourwave", settings2=True, queue=queue_param)
+            if not station_result or not station_result.sequence:
+                break
+
+            new_batch_id = getattr(station_result, "batch_id", None)
+            session["batch_id"] = new_batch_id
+
+            current_batch_meta = []
+            for seq_item in station_result.sequence:
+                t = getattr(seq_item, "track", None)
+                if not t or not getattr(t, "id", None):
+                    continue
+                formatted = format_track(t, host, token)
+                tid = formatted["id"]
+                rotor_id = formatted["rotor_id"]
+                dur = formatted["duration"] or 120
+                current_batch_meta.append((tid, rotor_id, dur))
+
+                if tid not in session["seen_ids"]:
+                    session["seen_ids"].append(tid)
+                    collected_tracks.append(formatted)
+
+            session["last_batch_tracks"] = current_batch_meta
+
+            # Сообщаем Ротору, что первый трек новой пачки начал играть
+            if current_batch_meta:
+                _send_rotor_feedback(client, "trackStarted", batch_id=new_batch_id, track_id=current_batch_meta[0][1])
+
+            if len(collected_tracks) >= 5:
+                break
+
+        # Если вдруг все пачки совпали, очищаем историю просмотренных и отдаём текущую пачку
+        if not collected_tracks and session["last_batch_tracks"]:
+            session["seen_ids"].clear()
+            station_result = client.rotor_station_tracks("user:onyourwave", settings2=True, queue=None)
+            if station_result and station_result.sequence:
+                for seq_item in station_result.sequence:
+                    t = getattr(seq_item, "track", None)
+                    if t and getattr(t, "id", None):
+                        formatted = format_track(t, host, token)
+                        session["seen_ids"].append(formatted["id"])
+                        collected_tracks.append(formatted)
+
+        # Предзагружаем первый трек в фоне на сервере для мгновенного старта
+        if collected_tracks:
+            preload_track_async(collected_tracks[0]["id"], token)
+
+        return jsonify({
+            "tracks": collected_tracks,
+            "batch_id": session["batch_id"] or "",
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/rotor/feedback", methods=["POST"])
+def rotor_feedback():
+    token = get_token()
+    if not token:
+        return jsonify({"error": "Missing token"}), 401
+    data = request.get_json(silent=True) or {}
+    fb_type = data.get("type", "trackFinished")
+    track_id = str(data.get("track_id", "")).strip()
+    played_sec = float(data.get("played_seconds", 0.0) or 0.0)
+
+    if not track_id:
+        return jsonify({"status": "ignored"})
+
+    try:
+        client = get_client(token)
+        session = _get_wave_session(token)
+        batch_id = session.get("batch_id")
+
+        # Ищем полный rotor_id (track_id:album_id), если он есть в последней пачке
+        full_id = track_id
+        for tid, rid, _ in session.get("last_batch_tracks", []):
+            if tid == track_id:
+                full_id = rid
+                break
+
+        _send_rotor_feedback(client, fb_type, batch_id=batch_id, track_id=full_id, played_sec=played_sec)
+        return jsonify({"status": "ok"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/preload/<track_id>", methods=["POST", "GET"])
+def preload_track_endpoint(track_id):
+    token = get_token()
+    if not token or not track_id:
+        return jsonify({"status": "ignored"}), 200
+    clean_id = track_id.split(".")[0]
+    preload_track_async(clean_id, token)
+    return jsonify({"status": "preloading", "track_id": clean_id}), 200
 
 
 @app.route("/likes", methods=["GET"])
@@ -280,8 +517,9 @@ def get_stream(filename):
         direct_url = resolve_direct_mp3_url(track_id, client)
 
         req_headers = {}
-        if "Range" in request.headers:
-            req_headers["Range"] = request.headers["Range"]
+        range_header = request.headers.get("Range")
+        if range_header:
+            req_headers["Range"] = range_header
 
         if request.method == "HEAD":
             head_resp = requests.head(direct_url, headers=req_headers, timeout=10)
@@ -306,7 +544,7 @@ def get_stream(filename):
                 resp_headers[h] = upstream.headers[h]
 
         return Response(
-            upstream.iter_content(chunk_size=32768),
+            upstream.iter_content(chunk_size=16384),
             status=upstream.status_code,
             headers=resp_headers,
         )

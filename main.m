@@ -1,6 +1,34 @@
 #import <UIKit/UIKit.h>
 #import "YMControllers.h"
 
+#pragma mark - Блокировка горизонтальной ориентации для контейнеров iOS 6
+
+@implementation UITabBarController (YMPortraitLock)
+- (BOOL)shouldAutorotate {
+    return NO;
+}
+- (UIInterfaceOrientationMask)supportedInterfaceOrientations {
+    return UIInterfaceOrientationMaskPortrait;
+}
+- (BOOL)shouldAutorotateToInterfaceOrientation:(UIInterfaceOrientation)interfaceOrientation {
+    return (interfaceOrientation == UIInterfaceOrientationPortrait);
+}
+@end
+
+@implementation UINavigationController (YMPortraitLock)
+- (BOOL)shouldAutorotate {
+    return NO;
+}
+- (UIInterfaceOrientationMask)supportedInterfaceOrientations {
+    return UIInterfaceOrientationMaskPortrait;
+}
+- (BOOL)shouldAutorotateToInterfaceOrientation:(UIInterfaceOrientation)interfaceOrientation {
+    return (interfaceOrientation == UIInterfaceOrientationPortrait);
+}
+@end
+
+#pragma mark - YMAppDelegate
+
 @interface YMAppDelegate : UIResponder <UIApplicationDelegate>
 @property (nonatomic, strong) UIWindow *window;
 @property (nonatomic, strong) UITabBarController *tabBarController;
@@ -9,17 +37,13 @@
 
 @implementation YMAppDelegate
 
-- (void)onAuthStateChanged {
-    if (![[YMApiClient shared] isAuthorized]) {
-        [self showAuthOverlay];
-    }
-}
-
 - (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions {
+    [[UIApplication sharedApplication] setStatusBarOrientation:UIInterfaceOrientationPortrait animated:NO];
+
     self.window = [[UIWindow alloc] initWithFrame:[[UIScreen mainScreen] bounds]];
 
     UINavigationController *likesNav = [[UINavigationController alloc] initWithRootViewController:[[YMLikesViewController alloc] init]];
-    likesNav.tabBarItem = [[UITabBarItem alloc] initWithTitle:@"Мне нравится" image:[UIImage imageNamed:@"tab_likes.png"] tag:0];
+    likesNav.tabBarItem = [[UITabBarItem alloc] initWithTitle:@"Любимое" image:[UIImage imageNamed:@"tab_likes.png"] tag:0];
 
     UINavigationController *playerNav = [[UINavigationController alloc] initWithRootViewController:[[YMPlayerViewController alloc] init]];
     playerNav.tabBarItem = [[UITabBarItem alloc] initWithTitle:@"Плеер" image:[UIImage imageNamed:@"tab_player.png"] tag:1];
@@ -42,14 +66,17 @@
                                                object:nil];
 
     [[NSNotificationCenter defaultCenter] addObserver:self
-                                         selector:@selector(onAuthStateChanged)
-                                             name:YMAuthStateChangedNotification
-                                           object:nil];
+                                             selector:@selector(onAuthStateChanged)
+                                                 name:YMAuthStateChangedNotification
+                                               object:nil];
 
     [[YMThemeManager shared] applyThemeToTabBarController:self.tabBarController];
 
     self.window.rootViewController = self.tabBarController;
     [self.window makeKeyAndVisible];
+
+    [[UIApplication sharedApplication] beginReceivingRemoteControlEvents];
+    [self becomeFirstResponder];
 
     if (![[YMApiClient shared] isAuthorized]) {
         [self showAuthOverlay];
@@ -58,6 +85,32 @@
     }
 
     return YES;
+}
+
+- (UIInterfaceOrientationMask)application:(UIApplication *)application supportedInterfaceOrientationsForWindow:(UIWindow *)window {
+    return UIInterfaceOrientationMaskPortrait;
+}
+
+- (BOOL)canBecomeFirstResponder {
+    return YES;
+}
+
+- (void)applicationDidEnterBackground:(UIApplication *)application {
+    [[UIApplication sharedApplication] beginReceivingRemoteControlEvents];
+    [self becomeFirstResponder];
+    [[YMPlayerManager shared] updateSystemNowPlayingInfo];
+}
+
+- (void)applicationWillEnterForeground:(UIApplication *)application {
+    [[UIApplication sharedApplication] beginReceivingRemoteControlEvents];
+    [self becomeFirstResponder];
+    [[YMPlayerManager shared] updateSystemNowPlayingInfo];
+}
+
+- (void)remoteControlReceivedWithEvent:(UIEvent *)event {
+    if (event.type == UIEventTypeRemoteControl) {
+        [[YMPlayerManager shared] handleRemoteControlEvent:event];
+    }
 }
 
 - (void)showAuthOverlay {
@@ -79,6 +132,12 @@
     };
 
     [self.window addSubview:self.authVC.view];
+}
+
+- (void)onAuthStateChanged {
+    if (![[YMApiClient shared] isAuthorized]) {
+        [self showAuthOverlay];
+    }
 }
 
 - (void)onThemeChanged {
